@@ -14,6 +14,17 @@ Set `GRAAL_HOME` to where it is installed. Then ensure nativeimage is installed
 
 You'll also need Maven.
 
+## Install custom Presto analzyer
+
+As of Presto 0.273 the analyzer lives in `presto-main` and has a very
+broad interface.  We use a custom fork of Presto that has the analyzer
+carved out into a small new `presto-analyzer` jar.  To build:
+
+1. Clone https://github.com/highker/presto.git
+2. `mvn clean install -DskipTests -T1C -pl presto-common,presto-spi,presto-parser,presto-analyzer`
+
+Validate you have the correct version of Presto using `make package`.
+
 ## Build native shared library
 
 `make native`
@@ -188,10 +199,21 @@ returning a tree of C-structs using GraalVM native-image is
 demonstrated here:
 https://github.com/michael-simons/neo4j-java-driver-native-lib/blob/master/src/main/java/org/neo4j/examples/drivernative/DriverNativeLib.java
 
-The presto TreePrinter we are using (unnecessarily) uses unsafe
-methods to build the the string output. It uses `io.airlift.slice`
-when generating the string for sql.tree.StringLiteral nodes. With the
-default settings on native-image this throws an exception. We probably
-need to tweak the config of native-image to make this work, but as
-noted above we do not want to use TreePrinter anyhow and instead
-return a tree of structs, so I've not looked into fixing this.
+The presto parser (unnecessarily) uses unsafe methods. It uses
+`io.airlift.slice` when generating the string for
+sql.tree.StringLiteral nodes. With the default settings on
+native-image this throws an exception. We probably need to tweak the
+config of native-image to make this work, or tweak the parser to not
+use these methods.  Minimal reproduction:
+
+```
+$ echo "select '2'" | ./a.out
+java.lang.ExceptionInInitializerError: null
+    at org.openjdk.jol.datamodel.CurrentDataModel.headerSize(CurrentDataModel.java:37)
+    at org.openjdk.jol.layouters.CurrentLayouter.layout(CurrentLayouter.java:75)
+    at org.openjdk.jol.info.ClassLayout.parseClass(ClassLayout.java:59)
+    at org.openjdk.jol.info.ClassLayout.parseClass(ClassLayout.java:48)
+    at io.airlift.slice.Slice.<clinit>(Slice.java:61)
+    at io.airlift.slice.Slices.<clinit>(Slices.java:37)
+    at com.facebook.presto.sql.tree.StringLiteral.<init>(StringLiteral.java:45)
+```
